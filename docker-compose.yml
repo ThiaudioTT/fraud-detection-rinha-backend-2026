@@ -1,0 +1,12 @@
+services:
+  app:
+    container_name: fraud_detection
+    build: .
+    ports:
+      - "9999:9999"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9999/ready"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
