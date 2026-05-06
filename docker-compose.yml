@@ -1,9 +1,12 @@
 services:
   app:
     container_name: fraud_detection
-    build: .
+    image: cosmtrek/air
+    working_dir: /app
     ports:
       - "9999:9999"
+    volumes:
+      - .:/app
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9999/ready"]
       interval: 60s
