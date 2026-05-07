@@ -7,9 +7,35 @@ services:
       - "9999:9999"
     volumes:
       - .:/app
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/fraud?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9999/ready"]
       interval: 60s
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  db:
+    container_name: fraud_db
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fraud
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fraud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
