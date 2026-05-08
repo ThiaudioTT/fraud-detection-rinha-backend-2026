@@ -12,6 +12,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      seed:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9999/ready"]
       interval: 60s
@@ -36,6 +38,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  seed:
+    container_name: fraud_seed
+    build:
+      context: .
+      target: loadrefs
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/fraud?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   pgdata:

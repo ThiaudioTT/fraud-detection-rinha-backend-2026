@@ -17,11 +17,11 @@ const referencesURL = "https://raw.githubusercontent.com/zanfranceschi/rinha-de-
 // LoadVectorRefs streams references.json.gz into reference_vectors via COPY.
 // No-op if the table is already populated.
 func LoadVectorRefs(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
-	var existing int64
-	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM reference_vectors").Scan(&existing); err != nil {
+	var populated bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM reference_vectors)").Scan(&populated); err != nil {
 		return 0, err
 	}
-	if existing > 0 {
+	if populated {
 		return 0, nil
 	}
 
