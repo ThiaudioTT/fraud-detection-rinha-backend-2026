@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+	log.Println("Starting fraud seed script...")
 	ctx := context.Background()
 	if err := database.Connect(ctx); err != nil {
 		log.Fatalf("database: %v", err)
