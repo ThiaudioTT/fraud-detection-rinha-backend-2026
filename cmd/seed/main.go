@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -22,12 +23,14 @@ type Reference struct {
 
 func SeedDb() {
 
+	log.Println("Downloading references...")
 	resp, err := http.Get(referencesURL)
 	if err != nil {
 		panic(err)
 	}
 	defer resp.Body.Close()
 
+	log.Println("Unzipping stream...")
 	// unzip stream
 	gzReader, err := gzip.NewReader(resp.Body)
 	if err != nil {
@@ -53,9 +56,7 @@ func SeedDb() {
 			panic(err)
 		}
 
-		// process item immediately
-		fmt.Println(reference.Vector, reference.Label)
-
+		log.Println("Processing reference...", reference.Vector, reference.Label)
 		count++
 	}
 
@@ -64,5 +65,6 @@ func SeedDb() {
 }
 
 func main() {
+	log.Println("start seeding database...")
 	SeedDb()
 }
