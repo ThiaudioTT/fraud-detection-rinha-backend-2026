@@ -8,15 +8,15 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/api ./cmd/api
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/loadrefs ./cmd/loadrefs
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/seed ./scripts
 
-FROM alpine:latest AS loadrefs
+FROM alpine:latest AS seed
 
 WORKDIR /app
 
-COPY --from=builder /out/loadrefs .
+COPY --from=builder /out/seed .
 
-CMD ["./loadrefs"]
+CMD ["./seed"]
 
 FROM alpine:latest AS api
 
