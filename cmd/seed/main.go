@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 const referencesURL = "https://raw.githubusercontent.com/zanfranceschi/rinha-de-backend-2026/main/resources/references.json.gz"
@@ -22,6 +23,8 @@ type Reference struct {
 }
 
 func SeedDb() {
+
+	startAt := time.Now()
 
 	log.Println("Downloading references...")
 	resp, err := http.Get(referencesURL)
@@ -60,7 +63,8 @@ func SeedDb() {
 		count++
 	}
 
-	fmt.Println("processed:", count)
+	endAt := time.Now()
+	fmt.Println("processed:", count, "duration:", endAt.Sub(startAt))
 
 }
 
