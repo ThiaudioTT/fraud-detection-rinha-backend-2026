@@ -2,11 +2,14 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"fraud-detection-2026/pkg/database"
 )
 
 const referencesURL = "https://raw.githubusercontent.com/zanfranceschi/rinha-de-backend-2026/main/resources/references.json.gz"
@@ -25,6 +28,13 @@ type Reference struct {
 func SeedDb() {
 
 	startAt := time.Now()
+
+	// Initialize database connection
+	ctx := context.Background()
+	if err := database.Connect(ctx); err != nil {
+		panic(fmt.Sprintf("Failed to connect to database: %v", err))
+	}
+	defer database.Close()
 
 	log.Println("Downloading references...")
 	resp, err := http.Get(referencesURL)
@@ -59,7 +69,15 @@ func SeedDb() {
 			panic(err)
 		}
 
-		log.Println("Processing reference...", reference.Vector, reference.Label)
+		// Insert into database
+		query := "INSERT INTO reference_vectors (vector, is_fraud) VALUES ($1, $2)"
+		isFraud := reference.Label == "fraud"
+
+		if err := database.Pool.QueryRow(ctx, query, reference.Vector, isFraud).Scan(); err != nil && err.Error() != "no rows in result set" {
+			log.Printf("Error inserting reference: %v", err)
+		} else {
+			log.Println("Inserted reference...", reference.Vector, reference.Label)
+		}
 		count++
 	}
 
