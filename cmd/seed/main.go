@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"fraud-detection-2026/pkg/database"
+
+	"github.com/pgvector/pgvector-go"
 )
 
 const referencesURL = "https://raw.githubusercontent.com/zanfranceschi/rinha-de-backend-2026/main/resources/references.json.gz"
@@ -73,7 +75,12 @@ func SeedDb() {
 		query := "INSERT INTO reference_vectors (vector, is_fraud) VALUES ($1, $2)"
 		isFraud := reference.Label == "fraud"
 
-		if err := database.Pool.QueryRow(ctx, query, reference.Vector, isFraud).Scan(); err != nil && err.Error() != "no rows in result set" {
+		vec32 := make([]float32, len(reference.Vector))
+		for i, v := range reference.Vector {
+			vec32[i] = float32(v)
+		}
+
+		if err := database.Pool.QueryRow(ctx, query, pgvector.NewVector(vec32), isFraud).Scan(); err != nil && err.Error() != "no rows in result set" {
 			log.Printf("Error inserting reference: %v", err)
 		} else {
 			log.Println("Inserted reference...", reference.Vector, reference.Label)

@@ -29,7 +29,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./cmd/seed/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d fraud"]
