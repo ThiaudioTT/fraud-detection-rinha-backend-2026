@@ -22,6 +22,7 @@ services:
   db:
     container_name: fraud_db
     image: pgvector/pgvector:pg17
+    shm_size: 5gb
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

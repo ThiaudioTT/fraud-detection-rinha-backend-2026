@@ -11,6 +11,7 @@ import (
 
 	"fraud-detection-2026/pkg/database"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -18,8 +19,8 @@ const referencesURL = "https://raw.githubusercontent.com/zanfranceschi/rinha-de-
 
 // Schema of the data inside this json ^
 // [
-//   { "vector": [0.01, 0.0833, 0.05, 0.8261, 0.1667, -1, -1, 0.0432, 0.25, 0, 1, 0, 0.2, 0.0416], "label": "legit" },
-//   { "vector": [0.5796, 0.9167, 1.0, 0.0435, 0, 0.0056, 0.4394, 0.4598, 0.4, 1, 0, 1, 0.85, 0.0032], "label": "fraud" }
+//   { "vector": [0.01, 0.0833, ...], "label": "legit" },
+//   { "vector": [0.5796, 0.9167, ...], "label": "fraud" }
 // ]
 
 type Reference struct {
@@ -27,16 +28,74 @@ type Reference struct {
 	Label  string    `json:"label"`
 }
 
-func SeedDb() {
+// referenceSource adapts a streaming JSON decoder to pgx.CopyFromSource so we
+// can COPY the whole dataset in a single call without buffering it in memory.
+type referenceSource struct {
+	decoder *json.Decoder
+	current Reference
+	count   int
+	err     error
+}
 
+func (s *referenceSource) Next() bool {
+	if s.err != nil || !s.decoder.More() {
+		return false
+	}
+	s.current = Reference{}
+	if err := s.decoder.Decode(&s.current); err != nil {
+		s.err = err
+		return false
+	}
+	s.count++
+	if s.count%100_000 == 0 {
+		log.Printf("streamed %d rows...", s.count)
+	}
+	return true
+}
+
+func (s *referenceSource) Values() ([]any, error) {
+	vec32 := make([]float32, len(s.current.Vector))
+	for i, v := range s.current.Vector {
+		vec32[i] = float32(v)
+	}
+	return []any{pgvector.NewVector(vec32), s.current.Label == "fraud"}, nil
+}
+
+func (s *referenceSource) Err() error { return s.err }
+
+func SeedDb() {
 	startAt := time.Now()
 
-	// Initialize database connection
 	ctx := context.Background()
 	if err := database.Connect(ctx); err != nil {
 		panic(fmt.Sprintf("Failed to connect to database: %v", err))
 	}
 	defer database.Close()
+
+	conn, err := database.Pool.Acquire(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Release()
+
+	// Drop the HNSW index before bulk load — building it after the table is
+	// populated is dramatically faster than updating it per-row.
+	log.Println("Dropping HNSW index...")
+	if _, err := conn.Exec(ctx, "DROP INDEX IF EXISTS reference_vectors_l2_idx"); err != nil {
+		panic(err)
+	}
+
+	// Tune the session for bulk loading + parallel HNSW build.
+	for _, stmt := range []string{
+		"SET synchronous_commit = off",
+		"SET maintenance_work_mem = '2GB'",
+		"SET max_parallel_maintenance_workers = 7",
+		"SET max_parallel_workers = 8",
+	} {
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			panic(err)
+		}
+	}
 
 	log.Println("Downloading references...")
 	resp, err := http.Get(referencesURL)
@@ -45,8 +104,6 @@ func SeedDb() {
 	}
 	defer resp.Body.Close()
 
-	log.Println("Unzipping stream...")
-	// unzip stream
 	gzReader, err := gzip.NewReader(resp.Body)
 	if err != nil {
 		panic(err)
@@ -54,43 +111,35 @@ func SeedDb() {
 	defer gzReader.Close()
 
 	decoder := json.NewDecoder(gzReader)
-
-	// read opening '['
-	_, err = decoder.Token()
-	if err != nil {
+	if _, err := decoder.Token(); err != nil { // opening '['
 		panic(err)
 	}
 
-	count := 0
+	src := &referenceSource{decoder: decoder}
 
-	// stream each object
-	for decoder.More() {
-		var reference Reference
-
-		if err := decoder.Decode(&reference); err != nil {
-			panic(err)
-		}
-
-		// Insert into database
-		query := "INSERT INTO reference_vectors (vector, is_fraud) VALUES ($1, $2)"
-		isFraud := reference.Label == "fraud"
-
-		vec32 := make([]float32, len(reference.Vector))
-		for i, v := range reference.Vector {
-			vec32[i] = float32(v)
-		}
-
-		if err := database.Pool.QueryRow(ctx, query, pgvector.NewVector(vec32), isFraud).Scan(); err != nil && err.Error() != "no rows in result set" {
-			log.Printf("Error inserting reference: %v", err)
-		} else {
-			log.Println("Inserted reference...", reference.Vector, reference.Label)
-		}
-		count++
+	log.Println("Starting COPY...")
+	copyStart := time.Now()
+	n, err := conn.Conn().CopyFrom(
+		ctx,
+		pgx.Identifier{"reference_vectors"},
+		[]string{"vector", "is_fraud"},
+		src,
+	)
+	if err != nil {
+		panic(fmt.Sprintf("copy failed after %d rows: %v", src.count, err))
 	}
+	log.Printf("COPY done: %d rows in %v", n, time.Since(copyStart))
 
-	endAt := time.Now()
-	fmt.Println("processed:", count, "duration:", endAt.Sub(startAt))
+	log.Println("Rebuilding HNSW index...")
+	idxStart := time.Now()
+	// m=8, ef_construction=32 — defaults are 16/64; lowering them ~halves build
+	// time with negligible recall loss for 14-dim vectors.
+	if _, err := conn.Exec(ctx, "CREATE INDEX reference_vectors_l2_idx ON reference_vectors USING hnsw (vector vector_l2_ops) WITH (m = 8, ef_construction = 32)"); err != nil {
+		panic(err)
+	}
+	log.Printf("Index built in %v", time.Since(idxStart))
 
+	fmt.Println("processed:", n, "duration:", time.Since(startAt))
 }
 
 func main() {
