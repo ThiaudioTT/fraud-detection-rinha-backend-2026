@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fraud-detection-2026/pkg/database"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,8 +12,9 @@ func Ready(c *gin.Context) {
 		c.JSON(503, gin.H{"message": "not ready", "error": err.Error()})
 		return
 	}
-
+	hostname, _ := os.Hostname() // For debugging
 	c.JSON(200, gin.H{
-		"message": "ready",
+		"message":  "ready",
+		"hostname": hostname,
 	})
 }
