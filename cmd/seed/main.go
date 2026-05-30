@@ -78,13 +78,6 @@ func SeedDb() {
 	}
 	defer conn.Release()
 
-	// // Drop the HNSW index before bulk load — building it after the table is
-	// // populated is dramatically faster than updating it per-row.
-	// log.Println("Dropping HNSW index...")
-	// if _, err := conn.Exec(ctx, "DROP INDEX IF EXISTS reference_vectors_l2_idx"); err != nil {
-	// 	panic(err)
-	// }
-
 	// Tune the session for bulk loading + parallel HNSW build.
 	for _, stmt := range []string{
 		"SET synchronous_commit = off",
@@ -130,14 +123,14 @@ func SeedDb() {
 	}
 	log.Printf("COPY done: %d rows in %v", n, time.Since(copyStart))
 
-	// log.Println("Rebuilding HNSW index...")
-	// idxStart := time.Now()
-	// // Use a smaller HNSW configuration so the build fits in the contest memory
-	// // budget without changing the database container limit.
-	// if _, err := conn.Exec(ctx, "CREATE INDEX reference_vectors_l2_idx ON reference_vectors USING hnsw (vector vector_l2_ops) WITH (m = 4, ef_construction = 16)"); err != nil {
-	// 	panic(err)
-	// }
-	// log.Printf("Index built in %v", time.Since(idxStart))
+	log.Println("Rebuilding HNSW index...")
+	idxStart := time.Now()
+	// Use a smaller HNSW configuration so the build fits in the contest memory
+	// budget without changing the database container limit.
+	if _, err := conn.Exec(ctx, "CREATE INDEX reference_vectors_l2_idx ON reference_vectors USING hnsw (vector vector_l2_ops) WITH (m = 4, ef_construction = 16)"); err != nil {
+		panic(err)
+	}
+	log.Printf("Index built in %v", time.Since(idxStart))
 
 	fmt.Println("processed:", n, "duration:", time.Since(startAt))
 }
