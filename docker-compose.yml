@@ -1,7 +1,6 @@
 services:
   app:
     container_name: fraud_detection
-    image: fraud-detection:local
     build:
       context: .
     ports:
@@ -41,7 +40,6 @@ services:
 
   seed:
     container_name: fraud_seed
-    image: fraud-detection:local
     build:
       context: .
     command: ["./seed"]
