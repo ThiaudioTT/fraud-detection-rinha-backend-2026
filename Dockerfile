@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/api ./cmd/api
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/seed ./scripts
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/seed ./cmd/seed
 
 FROM alpine:latest AS seed
 
