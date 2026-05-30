@@ -1,15 +1,16 @@
 services:
   app:
     container_name: fraud_detection
-    image: cosmtrek/air
-    working_dir: /app
+    image: fraud-detection:local
+    build:
+      context: .
     ports:
       - "9999:9999"
-    volumes:
-      - .:/app
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/fraud?sslmode=disable
     depends_on:
+      seed:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     healthcheck:
@@ -40,11 +41,10 @@ services:
 
   seed:
     container_name: fraud_seed
+    image: fraud-detection:local
     build:
       context: .
-      target: seed
-    profiles:
-      - seed
+    command: ["./seed"]
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/fraud?sslmode=disable
     depends_on:

@@ -10,19 +10,12 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/seed ./cmd/seed
 
-FROM alpine:latest AS seed
-
-WORKDIR /app
-
-COPY --from=builder /out/seed .
-
-CMD ["./seed"]
-
-FROM alpine:latest AS api
+FROM alpine:latest AS runtime
 
 WORKDIR /app
 
 COPY --from=builder /out/api .
+COPY --from=builder /out/seed .
 
 EXPOSE 9999
 
