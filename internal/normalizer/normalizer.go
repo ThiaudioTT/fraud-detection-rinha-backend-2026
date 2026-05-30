@@ -52,8 +52,10 @@ func NormalizePayloadTransaction(payload models.FraudScoreRequest) []float32 {
 	// hour of day (0-23)
 	v[3] = LimitValue(float64(payload.Transaction.RequestedAt.Hour()), 23)
 
-	// day of week (0-6)
-	v[4] = LimitValue(float64(payload.Transaction.RequestedAt.Weekday()), 6)
+	// day of week: map Monday=0 ... Sunday=6, then normalize over 6
+	wd := payload.Transaction.RequestedAt.Weekday()
+	mappedWeekday := float64((int(wd) + 6) % 7)
+	v[4] = LimitValue(mappedWeekday, 6)
 
 	// when last transaction is present
 	if payload.LastTransaction != nil {
