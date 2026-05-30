@@ -2,13 +2,13 @@ package models
 
 import "time"
 
-type GetFraudScore struct {
-	ID              string       `json:"id"`
-	Transaction     Transaction  `json:"transaction"`
-	Customer        Customer     `json:"customer"`
-	Merchant        Merchant     `json:"merchant"`
-	Terminal        Terminal     `json:"terminal"`
-	LastTransaction *Transaction `json:"last_transaction"` // can be null
+type FraudScoreRequest struct {
+	ID              string           `json:"id"`
+	Transaction     Transaction      `json:"transaction"`
+	Customer        Customer         `json:"customer"`
+	Merchant        Merchant         `json:"merchant"`
+	Terminal        Terminal         `json:"terminal"`
+	LastTransaction *LastTransaction `json:"last_transaction"` // can be null
 }
 
 type Transaction struct {
@@ -33,4 +33,9 @@ type Terminal struct {
 	IsOnline    bool    `json:"is_online"`
 	CardPresent bool    `json:"card_present"`
 	KmFromHome  float64 `json:"km_from_home"`
+}
+
+type LastTransaction struct {
+	Timestamp     time.Time `json:"timestamp"`
+	KmFromCurrent float64   `json:"km_from_current"`
 }
