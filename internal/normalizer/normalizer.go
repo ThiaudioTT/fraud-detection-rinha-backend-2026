@@ -3,6 +3,7 @@ package normalizer
 import (
 	"fraud-detection-2026/internal/config"
 	"fraud-detection-2026/internal/models"
+	"fraud-detection-2026/internal/repo"
 )
 
 // If number > max, return 1, else return number / max
@@ -11,6 +12,16 @@ func LimitValue(value, max float64) float32 {
 		return 1
 	}
 	return float32(value / max)
+}
+
+// 1 se merchant.id não estiver em customer.known_merchants, senão 0 (invertido: 1 = desconhecido)
+func IsUnknownMerchant(knownMerchants []string, merchantID string) float32 {
+	for _, m := range knownMerchants {
+		if m == merchantID {
+			return 0
+		}
+	}
+	return 1
 }
 
 // Return the embedded vector of the transaction
@@ -40,6 +51,30 @@ func NormalizePayloadTransaction(payload models.FraudScoreRequest) []float32 {
 		vector[5] = -1
 		vector[6] = -1
 	}
+
+	// km from home
+	vector[7] = LimitValue(payload.Terminal.KmFromHome/config.Cfg.MAX_KM, 1)
+
+	// tx count 24h
+	vector[8] = LimitValue(float64(payload.Customer.TxCount24h)/float64(config.Cfg.MAX_TX_COUNT_24H), 1)
+
+	// is_online
+	if payload.Terminal.IsOnline {
+		vector[9] = 1
+	}
+
+	if payload.Terminal.CardPresent {
+		vector[10] = 1
+	}
+
+	// unknown merchant (1 if unknown, 0 if known)
+	vector[11] = IsUnknownMerchant(payload.Customer.KnownMerchants, payload.Merchant.ID)
+
+	// mcc_risk
+	vector[12] = repo.GetMCCRiskScore(payload.Merchant.MCC)
+
+	// merchant avg amount
+	vector[13] = LimitValue(payload.Merchant.AvgAmount/config.Cfg.MAX_MERCHANT_AVG_AMOUNT, 1)
 
 	return vector
 }
