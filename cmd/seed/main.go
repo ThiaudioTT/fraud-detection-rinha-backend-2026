@@ -88,9 +88,9 @@ func SeedDb() {
 	// Tune the session for bulk loading + parallel HNSW build.
 	for _, stmt := range []string{
 		"SET synchronous_commit = off",
-		"SET maintenance_work_mem = '2GB'",
-		"SET max_parallel_maintenance_workers = 7",
-		"SET max_parallel_workers = 8",
+		"SET maintenance_work_mem = '64MB'",
+		"SET max_parallel_maintenance_workers = 0",
+		"SET max_parallel_workers = 0",
 	} {
 		if _, err := conn.Exec(ctx, stmt); err != nil {
 			panic(err)
@@ -132,9 +132,9 @@ func SeedDb() {
 
 	log.Println("Rebuilding HNSW index...")
 	idxStart := time.Now()
-	// m=8, ef_construction=32 — defaults are 16/64; lowering them ~halves build
-	// time with negligible recall loss for 14-dim vectors.
-	if _, err := conn.Exec(ctx, "CREATE INDEX reference_vectors_l2_idx ON reference_vectors USING hnsw (vector vector_l2_ops) WITH (m = 8, ef_construction = 32)"); err != nil {
+	// Use a smaller HNSW configuration so the build fits in the contest memory
+	// budget without changing the database container limit.
+	if _, err := conn.Exec(ctx, "CREATE INDEX reference_vectors_l2_idx ON reference_vectors USING hnsw (vector vector_l2_ops) WITH (m = 4, ef_construction = 16)"); err != nil {
 		panic(err)
 	}
 	log.Printf("Index built in %v", time.Since(idxStart))
