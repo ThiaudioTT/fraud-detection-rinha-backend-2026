@@ -1,54 +1,55 @@
+# Rinha de Backend 2026 submission topology: nginx load balancer + 2 API
+# instances, no database. The 3M reference vectors are baked into the image as
+# an int8 IVF index (references.bin) and mmap'd read-only by each instance, so
+# the whole stack fits the 1 CPU / 350 MB budget.
+#
+# Resource budget (sum must be <= 1 CPU / 350 MB):
+#   nginx 0.30 CPU /  32 MB  (on the path of every request — starving it throttles the whole stack)
+#   app1  0.35 CPU / 158 MB
+#   app2  0.35 CPU / 158 MB
+#   total 1.00 CPU / 348 MB
 services:
-  app:
-    container_name: fraud_detection
+  app1: &app
+    image: fraud-detection:local
     build:
       context: .
-    ports:
-      - "9999:9999"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/fraud?sslmode=disable
-    depends_on:
-      seed:
-        condition: service_completed_successfully
-      db:
-        condition: service_healthy
+      REFERENCES_PATH: /app/references.bin
+      # The live heap is tiny (~10 MB: the 3M vectors are off-heap via mmap), so
+      # let GOMEMLIMIT alone pace the GC. Disabling the GOGC ratio stops the
+      # frequent small collections that, under the fractional-CPU budget, steal
+      # cycles and spike tail latency; the 140 MiB soft limit (below the 158 MB
+      # cgroup cap) still triggers GC well before an OOM kill.
+      GOMEMLIMIT: 140MiB
+      GOGC: "off"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9999/ready"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
+      interval: 5s
+      timeout: 3s
+      retries: 10
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.35"
+          memory: 158M
 
-  db:
-    container_name: fraud_db
-    image: pgvector/pgvector:pg17
-    shm_size: 5gb
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: fraud
+  app2:
+    <<: *app
+
+  nginx:
+    image: nginx:1.27-alpine
     ports:
-      - "5432:5432"
+      - "9999:9999"
     volumes:
-      - ./cmd/seed/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d fraud"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  seed:
-    container_name: fraud_seed
-    build:
-      context: .
-    command: ["./seed"]
-    environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/fraud?sslmode=disable
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      db:
+      app1:
         condition: service_healthy
-    restart: "no"
-
-volumes:
-  pgdata:
+      app2:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 32M

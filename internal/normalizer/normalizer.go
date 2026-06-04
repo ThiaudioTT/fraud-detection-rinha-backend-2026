@@ -49,11 +49,13 @@ func NormalizePayloadTransaction(payload models.FraudScoreRequest) []float32 {
 		v[2] = LimitValue(payload.Transaction.Amount/payload.Customer.AvgAmount, config.Cfg.AMOUNT_VS_AVG_RATIO)
 	}
 
-	// hour of day (0-23)
-	v[3] = LimitValue(float64(payload.Transaction.RequestedAt.Hour()), 23)
+	// hour of day (0-23, UTC — the reference vectors were embedded in UTC, so a
+	// query in a local offset must be converted or dims 3/4 land in the wrong place)
+	utc := payload.Transaction.RequestedAt.UTC()
+	v[3] = LimitValue(float64(utc.Hour()), 23)
 
 	// day of week: map Monday=0 ... Sunday=6, then normalize over 6
-	wd := payload.Transaction.RequestedAt.Weekday()
+	wd := utc.Weekday()
 	mappedWeekday := float64((int(wd) + 6) % 7)
 	v[4] = LimitValue(mappedWeekday, 6)
 
