@@ -3,7 +3,6 @@ package repo
 import (
 	"context"
 	"fmt"
-	"fraud-detection-2026/internal/models"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgvector "github.com/pgvector/pgvector-go"
@@ -17,38 +16,39 @@ func NewReferenceRepo(db *pgxpool.Pool) *referenceRepo {
 	return &referenceRepo{db: db}
 }
 
-func (r *referenceRepo) FindSimilarTransactions(ctx context.Context, embedding []float32) ([]models.ReferenceVector, error) {
+// NeighborStats summarises the k nearest reference vectors: how many of them are
+// flagged as fraud out of the total returned.
+type NeighborStats struct {
+	Fraud int
+	Total int
+}
+
+// FindSimilarTransactions returns fraud statistics for the k nearest reference
+// vectors to the given embedding.
+//
+// We let Postgres do the counting in a single round trip instead of streaming k
+// rows back and looping in Go: the inner query uses the HNSW index for the
+// ORDER BY ... LIMIT (selecting only is_fraud, no unused columns), and the outer
+// aggregate collapses the result to two integers. This is the hot path, so it
+// runs as a cached prepared statement on a warm pooled connection.
+func (r *referenceRepo) FindSimilarTransactions(ctx context.Context, embedding []float32, k int) (NeighborStats, error) {
 	const query = `
-				SELECT
-					id,
-					is_fraud,
-					vector <-> $1::vector AS distance
-				FROM reference_vectors
-				ORDER BY distance
-				LIMIT 5;
-				`
-	rows, err := r.db.Query(ctx, query, pgvector.NewVector(embedding))
+		SELECT
+			count(*) FILTER (WHERE is_fraud)::int AS fraud,
+			count(*)::int                          AS total
+		FROM (
+			SELECT is_fraud
+			FROM reference_vectors
+			ORDER BY vector <-> $1::vector
+			LIMIT $2
+		) AS neighbors`
+
+	var stats NeighborStats
+	err := r.db.QueryRow(ctx, query, pgvector.NewVector(embedding), k).
+		Scan(&stats.Fraud, &stats.Total)
 	if err != nil {
-		return nil, fmt.Errorf("query similar transactions: %w", err)
-	}
-	defer rows.Close()
-
-	results := make([]models.ReferenceVector, 0, 5)
-	for rows.Next() {
-		var result models.ReferenceVector
-		if err := rows.Scan(&result.ID, &result.IsFraud, &result.Distance); err != nil {
-			return nil, fmt.Errorf("scan similar transaction: %w", err)
-		}
-		results = append(results, result)
+		return NeighborStats{}, fmt.Errorf("score nearest reference vectors: %w", err)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate similar transactions: %w", err)
-	}
-
-	if len(results) == 0 {
-		return nil, fmt.Errorf("no reference vectors found")
-	}
-
-	return results, nil
+	return stats, nil
 }

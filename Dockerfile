@@ -7,8 +7,10 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/api ./cmd/api
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/seed ./cmd/seed
+# Build the API with gin's sonic JSON codec (faster bind/encode than encoding/json)
+# and stripped debug info for a smaller, quicker-to-load binary.
+RUN CGO_ENABLED=0 GOOS=linux go build -tags=sonic -ldflags="-s -w" -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/seed ./cmd/seed
 
 FROM alpine:latest AS runtime
 

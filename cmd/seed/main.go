@@ -67,12 +67,13 @@ func SeedDb() {
 	startAt := time.Now()
 
 	ctx := context.Background()
-	if err := database.Connect(ctx); err != nil {
+	pool, err := database.Connect(ctx)
+	if err != nil {
 		panic(fmt.Sprintf("Failed to connect to database: %v", err))
 	}
-	defer database.Close()
+	defer pool.Close()
 
-	conn, err := database.Pool.Acquire(ctx)
+	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		panic(err)
 	}

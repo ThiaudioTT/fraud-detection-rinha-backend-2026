@@ -2,38 +2,54 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"fraud-detection-2026/internal/repo"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// fraudService provides methods to calculate fraud scores.
-// Mainly returns if a embbed transactions is fraud or not, and the fraud score itself.
-type fraudService struct {
-	db *pgxpool.Pool
+// neighborCount is how many nearest reference vectors we score a transaction
+// against, and fraudThreshold is the share of fraudulent neighbors at (or above)
+// which a transaction is rejected.
+const (
+	neighborCount  = 5
+	fraudThreshold = 0.6
+)
+
+// ReferenceRepository retrieves fraud statistics for the nearest reference
+// vectors. Declaring the dependency as an interface here (where it is consumed)
+// keeps the service decoupled from pgx and trivially mockable in tests.
+type ReferenceRepository interface {
+	FindSimilarTransactions(ctx context.Context, embedding []float32, k int) (repo.NeighborStats, error)
 }
 
-func NewFraudService(db *pgxpool.Pool) *fraudService {
-	return &fraudService{db: db}
+// FraudResult is the outcome of scoring a single transaction.
+type FraudResult struct {
+	Approved   bool    `json:"approved"`
+	FraudScore float32 `json:"fraud_score"`
 }
 
-func (s *fraudService) ScoreTransaction(ctx context.Context, embedding []float32) (bool, float32, error) {
-	referenceRepo := repo.NewReferenceRepo(s.db) // FIXME: this should be injected, not created here
-	matches, err := referenceRepo.FindSimilarTransactions(ctx, embedding)
+// FraudService decides whether an embedded transaction is fraudulent based on
+// the labels of its nearest reference vectors.
+type FraudService struct {
+	repo ReferenceRepository
+}
+
+func NewFraudService(repo ReferenceRepository) *FraudService {
+	return &FraudService{repo: repo}
+}
+
+func (s *FraudService) ScoreTransaction(ctx context.Context, embedding []float32) (FraudResult, error) {
+	stats, err := s.repo.FindSimilarTransactions(ctx, embedding, neighborCount)
 	if err != nil {
-		return false, 0, err
+		return FraudResult{}, err
+	}
+	if stats.Total == 0 {
+		return FraudResult{}, fmt.Errorf("no reference vectors found")
 	}
 
-	var fraudCount float32
-	for _, match := range matches {
-		if match.IsFraud {
-			fraudCount++
-		}
-	}
-
-	fraudScore := fraudCount / float32(len(matches))
-	approved := fraudScore < 0.6
-
-	return approved, fraudScore, nil // FIXME: I should be a struct
+	fraudScore := float32(stats.Fraud) / float32(stats.Total)
+	return FraudResult{
+		Approved:   fraudScore < fraudThreshold,
+		FraudScore: fraudScore,
+	}, nil
 }
