@@ -6,12 +6,19 @@ services:
       REFERENCES_PATH: /app/references.bin
       GOMEMLIMIT: 140MiB
       GOGC: "off"
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9999/ready"]
       interval: 5s
       timeout: 3s
       retries: 10
       start_period: 60s
+    cpuset: "1"
     deploy:
       resources:
         limits:
@@ -20,6 +27,7 @@ services:
 
   app2:
     <<: *app
+    cpuset: "2"
 
   nginx:
     image: nginx:1.27-alpine
@@ -27,6 +35,13 @@ services:
       - "9999:9999"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    cpuset: "0"
     depends_on:
       app1:
         condition: service_healthy
