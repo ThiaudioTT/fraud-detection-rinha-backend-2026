@@ -1,6 +1,7 @@
 services:
   app1: &app
     image: ghcr.io/thiaudiott/fraud-detection-rinha-backend-2026:main
+    pull_policy: always
     environment:
       REFERENCES_PATH: /app/references.bin
       GOMEMLIMIT: 140MiB
