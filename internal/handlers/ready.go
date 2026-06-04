@@ -2,29 +2,26 @@ package handlers
 
 import (
 	"net/http"
-	"os"
+
+	"fraud-detection-2026/internal/index"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ReadyHandler reports whether the instance can reach the database.
+// ReadyHandler reports whether the instance has the reference index loaded and
+// ready to serve. The load balancer must not route traffic until this passes.
 type ReadyHandler struct {
-	pool *pgxpool.Pool
+	idx *index.Index
 }
 
-func NewReadyHandler(pool *pgxpool.Pool) *ReadyHandler {
-	return &ReadyHandler{pool: pool}
+func NewReadyHandler(idx *index.Index) *ReadyHandler {
+	return &ReadyHandler{idx: idx}
 }
 
 func (h *ReadyHandler) Ready(c *gin.Context) {
-	if err := h.pool.Ping(c.Request.Context()); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "not ready", "error": err.Error()})
+	if h.idx == nil || h.idx.Count() == 0 {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "index not loaded"})
 		return
 	}
-	hostname, _ := os.Hostname() // For debugging which instance answered.
-	c.JSON(http.StatusOK, gin.H{
-		"message":  "ready",
-		"hostname": hostname,
-	})
+	c.Status(http.StatusOK)
 }

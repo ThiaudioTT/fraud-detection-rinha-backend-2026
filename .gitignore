@@ -1,2 +1,9 @@
 .env
 tmp
+
+# Built artifacts
+/api
+/preprocess
+
+# Generated index (baked into the image at build time, never committed)
+*.bin
