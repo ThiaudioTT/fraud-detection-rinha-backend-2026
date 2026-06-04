@@ -1,9 +1,28 @@
+# Rinha de Backend 2026 — nginx load balancer + 2 API instances, no database.
+# The 3M reference vectors are baked into the image as an int8 IVF index
+# (references.bin), mmap'd read-only per instance, so the stack fits 1 CPU / 350 MB.
+#
+# Resource budget (sum is fixed at <= 1 CPU / 348 MB):
+#   nginx 0.20 CPU /  24 MB  (pure reverse proxy: no TLS, no logs, keepalive,
+#                             tiny JSON bodies — cheap; the Go compute, not the
+#                             proxy, bounds throughput, so it gets the minimum)
+#   app1  0.40 CPU / 162 MB
+#   app2  0.40 CPU / 162 MB
+#   total 1.00 CPU / 348 MB
 services:
   app1: &app
     image: ghcr.io/thiaudiott/fraud-detection-rinha-backend-2026:main
     pull_policy: always
     environment:
       REFERENCES_PATH: /app/references.bin
+      # Each instance is pinned to a single core (cpuset) with a sub-core quota.
+      # Force GOMAXPROCS=1 so the runtime spins exactly one P: extra Ps under a
+      # fractional CPU quota only add scheduler churn and lengthen GC
+      # stop-the-world pauses (the killer for tail latency here).
+      GOMAXPROCS: "1"
+      # Live heap is tiny (~10 MB; the vectors are off-heap via mmap), so let
+      # GOMEMLIMIT alone pace the GC. The 140 MiB soft limit sits below the
+      # 162 MB cgroup cap and triggers GC well before any OOM kill.
       GOMEMLIMIT: 140MiB
       GOGC: "off"
     logging:
@@ -22,8 +41,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.35"
-          memory: 158M
+          cpus: "0.40"
+          memory: 162M
 
   app2:
     <<: *app
@@ -50,5 +69,5 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.30"
-          memory: 32M
+          cpus: "0.20"
+          memory: 24M
